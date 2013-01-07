@@ -77,10 +77,11 @@ void my_server ( ) {
     if ( client.connected( ) && client.available( )) {
       char *method = "";
       char *path = "";
-      char *response = "ok";
+      char *response;
       char *data = "";
       if ( get_request( client, method, path, data )) {
         response = call_route( method, path, data );
+        Serial.println( response );
       }
       client.print( json_header( "200 OK" ));
       client.print( json_response( response ));
@@ -90,39 +91,26 @@ void my_server ( ) {
   }
 }
 
-char *call_route ( char *method, char *path, char *data ) {
+char *call_route ( char * method, char * path, char * data ) {
   Serial.print( "Path was " );
   Serial.println( path );
-  char *room = strtok( path, "/" );
-  Serial.print( "room " );
-  Serial.println( room );
-  char *device;
-  device = strtok( path, "/" );
-  char *status = strtok( path, "/" );
-  Serial.print( "status " );
-  Serial.println( status );
-  // char *s = "666,!R2D1F1|dining on|arduino!";
-  char *s = "666,!R";
-  strcat( s, room );
-  Serial.print( "device " );
-  Serial.println( device );
-  strcat( s, "D" );
-  strcat( s, device );
-  // strcat( s, "F" );
-  // strcat( s, status );
-  // strcat( s, "|dining on|arduino!" );
-  // strcat( s, "{\"resource\":\"" );
-  // strcat( s, "\"}" );
-  // sprintf( response, "{\"method\": \"%s\", \"path\": \"%s\", \"pin_a\": \"%s\"}", method, path, pin );
-  // Serial.print( "<response>" );
-  // Serial.print( response );
-  // Serial.print( "</response>" );
-  
+  char * room = strtok( path, "/" );
+  char * device = strtok( NULL, "/" ); // strotok is mental
+  char * f = strtok( NULL, "/" );
+  char cmd[32]; // enough room for whole instruction
+  cmd[0] = 0; // null string
+  strcat( cmd, "666,!" );
+  strcat( cmd, "R" );
+  strcat( cmd, room );
+  strcat( cmd, "D" );
+  strcat( cmd, device );
+  strcat( cmd, "F" );
+  strcat( cmd, f );
+  strcat( cmd, "|testing|arduino!" );
   Udp.beginPacket( lwrfServer, lwrfPort );
-  Udp.write( s );
+  Udp.write( cmd );
   Udp.endPacket( );
-
-  return s;
+  return cmd;
 }
 
 char *json_header ( char *status ) {
@@ -132,7 +120,7 @@ char *json_header ( char *status ) {
   return s;
 }
 
-char *json_response ( char *response ) {
+char *json_response ( char * response ) {
   BUFFER s = "{\"a\":{";
   for ( int analog_pin = 0; analog_pin < 6; analog_pin ++ ) {
     if ( analog_pin > 0 ) strcat( s, "," );
