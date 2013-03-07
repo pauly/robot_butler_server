@@ -12,16 +12,18 @@
 #include <Ethernet.h>
 #include <EthernetUdp.h>
 
-#define BLUE 9
-#define GREEN 10
-#define WHITE 11
-#define YELLOW 12
-#define RED 3
-#define BUTTON 7
+#define BLUE 7
+#define GREEN 6
+#define YELLOW 5
+#define RED 4
+#define BUTTON 6
 #define THERMOMETER A0
+// how many pins have things on them?
+#define ANALOG_PINS 1
 
 // Up to 1023 + a null
 #define PIN_VAL_MAX_LEN 5
+#define HTTP_PORT 666
 
 unsigned int status = 0;
 unsigned int v = 0;
@@ -35,33 +37,41 @@ EthernetUDP Udp; // An EthernetUDP instance to let us send and receive packets o
 typedef char BUFFER[STRING_BUFFER_SIZE];
 
 byte mac[] = { 0x64, 0xA7, 0x69, 0x0D, 0x21, 0x21 }; // mac address of this arduino
-IPAddress ip( 192, 168, 0, 101 ); // requested ip address of this arduino
+IPAddress ip( 192, 168, 1, 101 ); // requested ip address of this arduino
 
-EthernetServer server( 666 ); // Initialize the Ethernet server library
+EthernetServer server( HTTP_PORT ); // Initialize the json server on this port
+EthernetServer webserver( 80 ); // Initialize the web server on this port
 
 void setup( ) {
   Serial.begin( 9600 );
   pinMode( RED, OUTPUT );
-  // test( RED );
   pinMode( YELLOW, OUTPUT );
-  pinMode( WHITE, OUTPUT );
   pinMode( GREEN, OUTPUT );
   pinMode( BLUE, OUTPUT );
-  pinMode( BUTTON, INPUT );
+  test( RED );
+  test( GREEN );
+  test( YELLOW );
+  test( BLUE );
   Ethernet.begin( mac, ip );
   Udp.begin( localPort );
-  server.begin();
+  server.begin( );
   Serial.print( "server is at " );
+  Serial.print( Ethernet.localIP( ));
+  Serial.print( ":" );
+  Serial.print( HTTP_PORT );
+  webserver.begin( );
+  Serial.print( "web server is also at " );
   Serial.println( Ethernet.localIP( ));
 }
 
 void loop( ) {
-  // thermo_light(  );
+  thermo_light( );
   my_server( );
+  my_web_server( );
 }
 
 void test ( int pin ) {
-  Serial.print( "Testing pin" ); 
+  Serial.print( "Testing pin " ); 
   Serial.println( pin ); 
   for ( int i = 0; i < 3; i ++ ) {
     digitalWrite( pin, HIGH );
@@ -83,11 +93,26 @@ void my_server ( ) {
         response = call_route( method, path, data );
         Serial.println( response );
       }
-      client.print( json_header( "200 OK" ));
+      client.print( http_header( "200 OK", "" ));
       client.print( json_response( response ));
     }
     delay( 1 ); // give the web browser time to receive the data
     client.stop(); // close the connection:
+  }
+}
+
+void my_web_server ( ) {
+  EthernetClient client = webserver.available();  // listen for incoming clients
+  if ( client ) {
+    if ( client.connected( ) && client.available( )) {
+      BUFFER html, header;
+      sprintf( html, "<html><title>Arduino!</title><body><h1>Arduino!</h1><p>Server is on port %d remember...</p></body></html>", HTTP_PORT, HTTP_PORT );
+      sprintf( header, "HTTP/1.1 200 OK\nws: arduino\nContent-Type: text/html\nContent-length: %d\nConnection: close\n\n", strlen( html ));
+      client.print( header );
+      client.print( html );
+    }
+    delay( 1 ); // give the web browser time to receive the data
+    client.stop( ); // close the connection:
   }
 }
 
@@ -113,16 +138,16 @@ char *call_route ( char * method, char * path, char * data ) {
   return cmd;
 }
 
-char *json_header ( char *status ) {
+char *http_header ( char *status, char *content_type ) {
   BUFFER s = "HTTP/1.1 ";
   strcat( s, status );
-  strcat( s, "\nContent-Type: application/json\nConnnection: close\n\n" );
+  strcat( s, "\nws:arduino\nContent-Type: application/json\n\n" );
   return s;
 }
 
 char *json_response ( char * response ) {
   BUFFER s = "{\"a\":{";
-  for ( int analog_pin = 0; analog_pin < 6; analog_pin ++ ) {
+  for ( int analog_pin = 0; analog_pin < ANALOG_PINS; analog_pin ++ ) {
     if ( analog_pin > 0 ) strcat( s, "," );
     strcat( s, json_pair( analog_pin, analogRead( analog_pin )));
   }
@@ -134,9 +159,14 @@ char *json_response ( char * response ) {
   strcat( s, "\"" );
   strcat( s, response );
   strcat( s, "\"" );
-
-  // strcat( s, ",\"about\":\"x\"" );
-  
+  int v = analogRead( THERMOMETER );
+  char vs[4] = "";
+  itoa( vtoc( v ), vs, 10 );
+  strcat( s, ",\"temperature\":" );
+  strcat( s, "\"" );
+  strcat( s, vs );
+  strcat( s, "\"" );
+   
   strcat( s, "}" );
   return s;
 }
@@ -166,16 +196,16 @@ boolean get_request ( EthernetClient client, char * & method, char * & path, cha
   return true;
 }
 
-void thermo_light( ) {
-  int v = analogRead( THERMOMETER );
-  Serial.print( v );
-  Serial.print( ':' );
-  v = ( 5 * v * 100.0 ) / 1024.0;
-  Serial.println( v );
-  digitalWrite( BLUE, ( v <= 5 ));
-  digitalWrite( GREEN, ( v >= 5 && v <= 14 ));
-  digitalWrite( WHITE, ( v >= 13 && v <= 18 ));
-  digitalWrite( YELLOW, ( v >= 17 && v <= 21 ));
-  digitalWrite( RED, ( v >= 21 ));
+int vtoc ( int v ) {
+  return ( 5 * v * 100.0 ) / 1024.0;
+}
+
+int thermo_light( ) {
+  int v = vtoc( analogRead( THERMOMETER ));
+  digitalWrite( BLUE, ( v <= 16 ));
+  digitalWrite( GREEN, ( v >= 16 && v <= 20 ));
+  digitalWrite( YELLOW, ( v >= 20 && v <= 22 ));
+  digitalWrite( RED, ( v >= 22 ));
   delay( 1000 );
+  return v;
 }
