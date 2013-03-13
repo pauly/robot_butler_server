@@ -1,7 +1,6 @@
 /**
  * Control my "robot butler"
  * Accepts commands over http and passes them on to devices.
- * LOTS of unused code in here, a work in progress!
  * Features experiments in temperature and lightwaverf
  * 
  * @author PC <paulypopex+arduino@gmail.com>
@@ -12,14 +11,16 @@
 #include <Ethernet.h>
 #include <EthernetUdp.h>
 
-#define BLUE 7
-#define GREEN 6
-#define YELLOW 5
-#define RED 4
+#define BLUE_PIN 7
+#define GREEN_PIN 6
+#define YELLOW_PIN 5
+#define RED_PIN 4
 #define BUTTON 6
-#define THERMOMETER A0
+#define THERMOMETER_PIN A0
+#define DOOR_PIN A1
+
 // how many pins have things on them?
-#define ANALOG_PINS 1
+#define ANALOG_PINS 2
 
 // Up to 1023 + a null
 #define PIN_VAL_MAX_LEN 5
@@ -29,8 +30,8 @@ unsigned int status = 0;
 unsigned int v = 0;
 unsigned int previous = 0;
 unsigned int localPort = 9761; // local port to listen on
-unsigned int lwrfPort = 9760; // local port to listen on
-IPAddress lwrfServer( 192, 168, 0, 14 ); // lightwaverf wifi link ip address
+unsigned int lwrfPort = 9760; // lightwaverf port to send on
+IPAddress lwrfServer( 192, 168, 0, 14 ); // lightwaverf wifi link ip address. Or just 255,255,255,255 to broadcast
 EthernetUDP Udp; // An EthernetUDP instance to let us send and receive packets over UDP
 
 #define STRING_BUFFER_SIZE 256
@@ -42,16 +43,20 @@ IPAddress ip( 192, 168, 1, 101 ); // requested ip address of this arduino
 EthernetServer server( HTTP_PORT ); // Initialize the json server on this port
 EthernetServer webserver( 80 ); // Initialize the web server on this port
 
+unsigned long time;
+unsigned long open_for;
+unsigned long last_alerted;
+
 void setup( ) {
   Serial.begin( 9600 );
-  pinMode( RED, OUTPUT );
-  pinMode( YELLOW, OUTPUT );
-  pinMode( GREEN, OUTPUT );
-  pinMode( BLUE, OUTPUT );
-  test( RED );
-  test( GREEN );
-  test( YELLOW );
-  test( BLUE );
+  pinMode( RED_PIN, OUTPUT );
+  pinMode( YELLOW_PIN, OUTPUT );
+  pinMode( GREEN_PIN, OUTPUT );
+  pinMode( BLUE_PIN, OUTPUT );
+  test( RED_PIN );
+  test( GREEN_PIN );
+  test( YELLOW_PIN );
+  test( BLUE_PIN );
   Ethernet.begin( mac, ip );
   Udp.begin( localPort );
   server.begin( );
@@ -68,6 +73,7 @@ void loop( ) {
   thermo_light( );
   my_server( );
   my_web_server( );
+  door( );
 }
 
 void test ( int pin ) {
@@ -159,12 +165,17 @@ char *json_response ( char * response ) {
   strcat( s, "\"" );
   strcat( s, response );
   strcat( s, "\"" );
-  int v = analogRead( THERMOMETER );
+  int v = analogRead( THERMOMETER_PIN );
   char vs[4] = "";
   itoa( vtoc( v ), vs, 10 );
   strcat( s, ",\"temperature\":" );
   strcat( s, "\"" );
   strcat( s, vs );
+  strcat( s, "\"" );
+
+  strcat( s, ",\"door\":" );
+  strcat( s, "\"" );
+  strcat( s, analogRead( DOOR_PIN ) ? "open" : "closed" );
   strcat( s, "\"" );
    
   strcat( s, "}" );
@@ -201,11 +212,42 @@ int vtoc ( int v ) {
 }
 
 int thermo_light( ) {
-  int v = vtoc( analogRead( THERMOMETER ));
-  digitalWrite( BLUE, ( v <= 16 ));
-  digitalWrite( GREEN, ( v >= 16 && v <= 20 ));
-  digitalWrite( YELLOW, ( v >= 20 && v <= 22 ));
-  digitalWrite( RED, ( v >= 22 ));
-  delay( 1000 );
+  int v = vtoc( analogRead( THERMOMETER_PIN ));
+  digitalWrite( BLUE_PIN, ( v <= 16 ));
+  digitalWrite( GREEN_PIN, ( v >= 16 && v <= 20 ));
+  digitalWrite( YELLOW_PIN, ( v >= 20 && v <= 22 ));
+  digitalWrite( RED_PIN, ( v >= 22 ));
+  delay( 100 );
+  return v;
+}
+
+/**
+ * Is the door open or what?
+ * Door has one of these on it http://www.toolstation.com/shop/Magnetic+Contact/p33648
+ */
+int door( ) {
+  int v = analogRead( DOOR_PIN );
+  if ( v == 0 ) {
+    time = millis( );
+  }
+  else {
+    unsigned long k = 1000;
+    unsigned long one_minute = k * 60;
+     open_for = ( millis( ) - time ) / k;
+     if ( open_for > 60 ) {
+       unsigned long since_alert = ( millis( ) - last_alerted ) / k;
+       if ( since_alert > 60 ) {
+         last_alerted = millis( );
+         Serial.print( "door! " );
+         Serial.print( "time is " );
+         Serial.print( time );
+         Serial.print( ", millis( ) is " );
+         Serial.print( millis( ));
+         Serial.print( ", open for " );
+         Serial.print(( millis( ) - time ) / one_minute );
+         Serial.println( " secs" );
+       }
+    }
+  }
   return v;
 }
