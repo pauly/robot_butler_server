@@ -26,7 +26,7 @@
 #define PIN_VAL_MAX_LEN 5
 #define HTTP_PORT 666
 
-unsigned int status = 0;
+unsigned int doorOpen = 0;
 unsigned int v = 0;
 unsigned int previous = 0;
 unsigned int localPort = 9761; // local port to listen on
@@ -53,10 +53,6 @@ void setup( ) {
   pinMode( YELLOW_PIN, OUTPUT );
   pinMode( GREEN_PIN, OUTPUT );
   pinMode( BLUE_PIN, OUTPUT );
-  test( RED_PIN );
-  test( GREEN_PIN );
-  test( YELLOW_PIN );
-  test( BLUE_PIN );
   Ethernet.begin( mac, ip );
   Udp.begin( localPort );
   server.begin( );
@@ -65,15 +61,13 @@ void setup( ) {
   Serial.print( ":" );
   Serial.print( HTTP_PORT );
   webserver.begin( );
-  Serial.print( "web server is also at " );
-  Serial.println( Ethernet.localIP( ));
 }
 
 void loop( ) {
   thermo_light( );
   my_server( );
   my_web_server( );
-  door( );
+  door( DOOR_PIN );
 }
 
 void test ( int pin ) {
@@ -83,6 +77,7 @@ void test ( int pin ) {
     digitalWrite( pin, HIGH );
     delay( 100 );
     digitalWrite( pin, LOW );
+    delay( 100 );
   }
 }
 
@@ -215,8 +210,8 @@ int thermo_light( ) {
   int v = vtoc( analogRead( THERMOMETER_PIN ));
   digitalWrite( BLUE_PIN, ( v <= 16 ));
   digitalWrite( GREEN_PIN, ( v >= 16 && v <= 20 ));
-  digitalWrite( YELLOW_PIN, ( v >= 20 && v <= 22 ));
-  digitalWrite( RED_PIN, ( v >= 22 ));
+  digitalWrite( YELLOW_PIN, ( v >= 20 && v <= 23 ));
+  digitalWrite( RED_PIN, ( v >= 23 ));
   delay( 100 );
   return v;
 }
@@ -225,29 +220,28 @@ int thermo_light( ) {
  * Is the door open or what?
  * Door has one of these on it http://www.toolstation.com/shop/Magnetic+Contact/p33648
  */
-int door( ) {
-  int v = analogRead( DOOR_PIN );
-  if ( v == 0 ) {
-    time = millis( );
+int door( int pin ) {
+  v = analogRead( pin ) ? 1 : 0;
+  if ( v != doorOpen ) {
+    doorOpen = v;
+    Serial.print( "door is " );
+    Serial.println( doorOpen ? "open" : "shut" );
   }
-  else {
+  if ( doorOpen ) {
     unsigned long k = 1000;
     unsigned long one_minute = k * 60;
-     open_for = ( millis( ) - time ) / k;
-     if ( open_for > 60 ) {
-       unsigned long since_alert = ( millis( ) - last_alerted ) / k;
-       if ( since_alert > 60 ) {
-         last_alerted = millis( );
-         Serial.print( "door! " );
-         Serial.print( "time is " );
-         Serial.print( time );
-         Serial.print( ", millis( ) is " );
-         Serial.print( millis( ));
-         Serial.print( ", open for " );
-         Serial.print(( millis( ) - time ) / one_minute );
-         Serial.println( " secs" );
-       }
+    open_for = ( millis( ) - time ) / k;
+    if ( open_for > 10 ) {
+      if (( millis( ) - last_alerted ) / k > 10 ) {
+        last_alerted = millis( );
+        Serial.print( "door open for " );
+        Serial.print( open_for );
+        Serial.println( " secs" );
+      }
     }
+  }
+  else {
+    time = millis( );
   }
   return v;
 }
