@@ -18,6 +18,8 @@
 #define BUTTON 6
 #define THERMOMETER_PIN A0
 #define DOOR_PIN A1
+#define TOO_LONG 60
+#define TIME_BETWEEN_NAGS 60
 
 // how many pins have things on them?
 #define ANALOG_PINS 2
@@ -219,6 +221,9 @@ int thermo_light( ) {
 /**
  * Is the door open or what?
  * Door has one of these on it http://www.toolstation.com/shop/Magnetic+Contact/p33648
+ * doorOpen is a global
+ * TIME_BETWEEN_NAGS is a number of seconds
+ * TOO_LONG is a number of seconds
  */
 int door( int pin ) {
   v = analogRead( pin ) ? 1 : 0;
@@ -228,11 +233,9 @@ int door( int pin ) {
     Serial.println( doorOpen ? "open" : "shut" );
   }
   if ( doorOpen ) {
-    unsigned long k = 1000;
-    unsigned long one_minute = k * 60;
-    open_for = ( millis( ) - time ) / k;
-    if ( open_for > 10 ) {
-      if (( millis( ) - last_alerted ) / k > 10 ) {
+    open_for = ( millis( ) - time ) / 1000;
+    if ( open_for > TOO_LONG ) {
+      if (( millis( ) - last_alerted ) / 1000 > TIME_BETWEEN_NAGS ) {
         last_alerted = millis( );
         Serial.print( "door open for " );
         Serial.print( open_for );
