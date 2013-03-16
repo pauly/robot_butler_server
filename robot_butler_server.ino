@@ -10,6 +10,8 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <EthernetUdp.h>
+// put your textlocal.com credentials in TextLocal.h - copy TextLocal.h.sample
+#include "TextLocal.h"
 
 #define BLUE_PIN 7
 #define GREEN_PIN 6
@@ -29,8 +31,6 @@
 #define HTTP_PORT 666
 
 unsigned int doorOpen = 0;
-unsigned int v = 0;
-unsigned int previous = 0;
 unsigned int localPort = 9761; // local port to listen on
 unsigned int lwrfPort = 9760; // lightwaverf port to send on
 IPAddress lwrfServer( 192, 168, 0, 14 ); // lightwaverf wifi link ip address. Or just 255,255,255,255 to broadcast
@@ -40,36 +40,49 @@ EthernetUDP Udp; // An EthernetUDP instance to let us send and receive packets o
 typedef char BUFFER[STRING_BUFFER_SIZE];
 
 byte mac[] = { 0x64, 0xA7, 0x69, 0x0D, 0x21, 0x21 }; // mac address of this arduino
-IPAddress ip( 192, 168, 1, 101 ); // requested ip address of this arduino
-
+byte ip[] = { 192, 168, 1, 101 }; // requested ip address of this arduino
+byte router[] = { 192, 168, 1, 254 }; // my router
 EthernetServer server( HTTP_PORT ); // Initialize the json server on this port
-EthernetServer webserver( 80 ); // Initialize the web server on this port
+// EthernetServer webserver( 80 ); // Initialize the web server on this port
+EthernetClient client; // to make outbound connections
 
 unsigned long time;
-unsigned long open_for;
-unsigned long last_alerted;
+unsigned long openFor;
+unsigned long lastAlerted;
+
+#ifndef TEXTLOCAL_H
+char textLocalUser[] = "user";
+char textLocalPassword[] = "pass";
+#endif
 
 void setup( ) {
-  Serial.begin( 9600 );
   pinMode( RED_PIN, OUTPUT );
   pinMode( YELLOW_PIN, OUTPUT );
   pinMode( GREEN_PIN, OUTPUT );
   pinMode( BLUE_PIN, OUTPUT );
-  Ethernet.begin( mac, ip );
+  Ethernet.begin( mac ); // dhcp
+  // Ethernet.begin( mac, ip, router, router ); // can't get this working
+  Serial.begin( 9600 );
+  delay( 1000 ); // give it a second to initialise
   Udp.begin( localPort );
   server.begin( );
   Serial.print( "server is at " );
   Serial.print( Ethernet.localIP( ));
   Serial.print( ":" );
   Serial.print( HTTP_PORT );
-  webserver.begin( );
+  // webserver.begin( );
 }
 
 void loop( ) {
-  thermo_light( );
-  my_server( );
-  my_web_server( );
+  thermoLight( );
+  jsonServer( );
+  // webServer( );
   door( DOOR_PIN );
+  if ( client.available( )) {
+    char c = client.read( );
+    Serial.print( c );
+  }
+  delay( 1 );
 }
 
 void test ( int pin ) {
@@ -83,7 +96,7 @@ void test ( int pin ) {
   }
 }
 
-void my_server ( ) {
+void jsonServer ( ) {
   EthernetClient client = server.available();  // listen for incoming clients
   if ( client ) {
     Serial.println( "new client" );
@@ -92,19 +105,19 @@ void my_server ( ) {
       char *path = "";
       char *response;
       char *data = "";
-      if ( get_request( client, method, path, data )) {
-        response = call_route( method, path, data );
+      if ( getRequest( client, method, path, data )) {
+        response = callRoute( method, path, data );
         Serial.println( response );
       }
-      client.print( http_header( "200 OK", "" ));
-      client.print( json_response( response ));
+      client.print( httpHeader( "200 OK", "" ));
+      client.print( jsonResponse( response ));
     }
     delay( 1 ); // give the web browser time to receive the data
     client.stop(); // close the connection:
   }
 }
 
-void my_web_server ( ) {
+/* void webServer ( ) {
   EthernetClient client = webserver.available();  // listen for incoming clients
   if ( client ) {
     if ( client.connected( ) && client.available( )) {
@@ -117,9 +130,9 @@ void my_web_server ( ) {
     delay( 1 ); // give the web browser time to receive the data
     client.stop( ); // close the connection:
   }
-}
+} */
 
-char *call_route ( char * method, char * path, char * data ) {
+char *callRoute ( char * method, char * path, char * data ) {
   Serial.print( "Path was " );
   Serial.println( path );
   char * room = strtok( path, "/" );
@@ -141,21 +154,21 @@ char *call_route ( char * method, char * path, char * data ) {
   return cmd;
 }
 
-char *http_header ( char *status, char *content_type ) {
+char *httpHeader ( char *status, char *contentType ) {
   BUFFER s = "HTTP/1.1 ";
   strcat( s, status );
   strcat( s, "\nws:arduino\nContent-Type: application/json\n\n" );
   return s;
 }
 
-char *json_response ( char * response ) {
+char *jsonResponse ( char * response ) {
   BUFFER s = "{\"a\":{";
-  for ( int analog_pin = 0; analog_pin < ANALOG_PINS; analog_pin ++ ) {
-    if ( analog_pin > 0 ) strcat( s, "," );
-    strcat( s, json_pair( analog_pin, analogRead( analog_pin )));
+  for ( int analogPin = 0; analogPin < ANALOG_PINS; analogPin ++ ) {
+    if ( analogPin > 0 ) strcat( s, "," );
+    strcat( s, jsonPair( analogPin, analogRead( analogPin )));
   }
-  strcat( s, "},\"d\":{" );
-  strcat( s, json_pair( BUTTON, digitalRead( BUTTON )));
+  // strcat( s, "},\"d\":{" );
+  // strcat( s, jsonPair( BUTTON, digitalRead( BUTTON )));
   strcat( s, "}" );
   
   strcat( s, ",\"r\":" );
@@ -179,7 +192,7 @@ char *json_response ( char * response ) {
   return s;
 }
 
-char *json_pair ( int k, int v ) {
+char *jsonPair ( int k, int v ) {
   BUFFER s = "";
   char vs[PIN_VAL_MAX_LEN];
   sprintf( vs, "\"%d\"", k );
@@ -190,7 +203,7 @@ char *json_pair ( int k, int v ) {
   return s;
 }
 
-boolean get_request ( EthernetClient client, char * & method, char * & path, char * & data ) {
+boolean getRequest ( EthernetClient client, char * & method, char * & path, char * & data ) {
   char s[STRING_BUFFER_SIZE];
   s[0] = client.read();
   s[1] = client.read();
@@ -208,13 +221,13 @@ int vtoc ( int v ) {
   return ( 5 * v * 100.0 ) / 1024.0;
 }
 
-int thermo_light( ) {
+int thermoLight( ) {
   int v = vtoc( analogRead( THERMOMETER_PIN ));
   digitalWrite( BLUE_PIN, ( v <= 16 ));
   digitalWrite( GREEN_PIN, ( v >= 16 && v <= 20 ));
   digitalWrite( YELLOW_PIN, ( v >= 20 && v <= 23 ));
   digitalWrite( RED_PIN, ( v >= 23 ));
-  delay( 100 );
+  // delay( 100 );
   return v;
 }
 
@@ -226,19 +239,25 @@ int thermo_light( ) {
  * TOO_LONG is a number of seconds
  */
 int door( int pin ) {
-  v = analogRead( pin ) ? 1 : 0;
+  unsigned int v = analogRead( pin ) ? 1 : 0;
+  // Serial.println( v );
   if ( v != doorOpen ) {
-    doorOpen = v;
-    Serial.print( "door is " );
-    Serial.println( doorOpen ? "open" : "shut" );
+    Serial.print( v );
+    Serial.print( " != " );
+    Serial.println( doorOpen );
+    doorOpen = v ? 1 : 0;
+    Serial.print( "now doorOpen = " );
+    Serial.println( doorOpen );
+    delay( 1000 );
+    // alert( doorOpen );
   }
   if ( doorOpen ) {
-    open_for = ( millis( ) - time ) / 1000;
-    if ( open_for > TOO_LONG ) {
-      if (( millis( ) - last_alerted ) / 1000 > TIME_BETWEEN_NAGS ) {
-        last_alerted = millis( );
+    openFor = ( millis( ) - time ) / 1000;
+    if ( openFor > TOO_LONG ) {
+      if (( millis( ) - lastAlerted ) / 1000 > TIME_BETWEEN_NAGS ) {
+        lastAlerted = millis( );
         Serial.print( "door open for " );
-        Serial.print( open_for );
+        Serial.print( openFor );
         Serial.println( " secs" );
       }
     }
@@ -247,4 +266,30 @@ int door( int pin ) {
     time = millis( );
   }
   return v;
+}
+/**
+ * To send a text or a tweet or something.
+ * Needs work, needs a password stored out of the repo, in a header maybe.
+ */
+int alert( int status ) {
+  // Serial.print( "door is " );
+  // Serial.println( status );
+  // Serial.print( "username is " );
+  // Serial.println( textLocalUser );
+  if ( client.connect( "www.txtlocal.com", 80 )) {
+    Serial.println( "connected to server ok" );
+    client.print( "GET /getcredits.php?uname=" );
+    client.print( textLocalUser );
+    client.print( "&pword=" );
+    client.print( textLocalPassword );
+    client.println( " HTTP/1.1" );
+    client.print( "Host: " );
+    client.println( "www.txtlocal.com" );
+    client.println( );
+    client.println( "User-Agent: Arduino/1.0" );
+    client.println( "Connection: close" );
+  }
+  else {
+    // Serial.println( "not connected" );
+  }
 }

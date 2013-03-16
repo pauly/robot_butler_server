@@ -1,0 +1,4 @@
+#define TXTLOCAL_H
+char textLocalUser[] = "email@domain.com";
+char textLocalPassword[] = "password";
+
