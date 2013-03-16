@@ -19,7 +19,7 @@
 #define RED_PIN 4
 #define BUTTON 6
 #define THERMOMETER_PIN A0
-#define DOOR_PIN A1
+#define DOOR_PIN 2
 #define TOO_LONG 60
 #define TIME_BETWEEN_NAGS 60
 
@@ -239,13 +239,12 @@ int thermoLight( ) {
  * TOO_LONG is a number of seconds
  */
 int door( int pin ) {
-  unsigned int v = analogRead( pin ) ? 1 : 0;
-  // Serial.println( v );
+  unsigned int v = digitalRead( pin );
   if ( v != doorOpen ) {
     Serial.print( v );
     Serial.print( " != " );
     Serial.println( doorOpen );
-    doorOpen = v ? 1 : 0;
+    doorOpen = v;
     Serial.print( "now doorOpen = " );
     Serial.println( doorOpen );
     delay( 1000 );
@@ -269,13 +268,9 @@ int door( int pin ) {
 }
 /**
  * To send a text or a tweet or something.
- * Needs work, needs a password stored out of the repo, in a header maybe.
+ * Incomplete!
  */
 int alert( int status ) {
-  // Serial.print( "door is " );
-  // Serial.println( status );
-  // Serial.print( "username is " );
-  // Serial.println( textLocalUser );
   if ( client.connect( "www.txtlocal.com", 80 )) {
     Serial.println( "connected to server ok" );
     client.print( "GET /getcredits.php?uname=" );
@@ -283,13 +278,9 @@ int alert( int status ) {
     client.print( "&pword=" );
     client.print( textLocalPassword );
     client.println( " HTTP/1.1" );
-    client.print( "Host: " );
-    client.println( "www.txtlocal.com" );
+    client.print( "Host: www.txtlocal.com" );
     client.println( );
     client.println( "User-Agent: Arduino/1.0" );
     client.println( "Connection: close" );
-  }
-  else {
-    // Serial.println( "not connected" );
   }
 }
