@@ -30,7 +30,7 @@
 #define PIN_VAL_MAX_LEN 5
 #define HTTP_PORT 666
 
-unsigned int doorOpen = 0;
+int doorStatus = -1;
 unsigned int localPort = 9761; // local port to listen on
 unsigned int lwrfPort = 9760; // lightwaverf port to send on
 IPAddress lwrfServer( 192, 168, 0, 14 ); // lightwaverf wifi link ip address. Or just 255,255,255,255 to broadcast
@@ -51,8 +51,9 @@ unsigned long openFor;
 unsigned long lastAlerted;
 
 #ifndef TEXTLOCAL_H
-char textLocalUser[] = "user";
-char textLocalPassword[] = "pass";
+char textLocalUser[5] = "user";
+char textLocalPassword[5] = "pass";
+char textLocalHost[17] = "www.txtlocal.com";
 #endif
 
 void setup( ) {
@@ -60,6 +61,8 @@ void setup( ) {
   pinMode( YELLOW_PIN, OUTPUT );
   pinMode( GREEN_PIN, OUTPUT );
   pinMode( BLUE_PIN, OUTPUT );
+  pinMode( BLUE_PIN, OUTPUT );
+  pinMode( DOOR_PIN, INPUT );
   Ethernet.begin( mac ); // dhcp
   // Ethernet.begin( mac, ip, router, router ); // can't get this working
   Serial.begin( 9600 );
@@ -185,7 +188,7 @@ char *jsonResponse ( char * response ) {
 
   strcat( s, ",\"door\":" );
   strcat( s, "\"" );
-  strcat( s, analogRead( DOOR_PIN ) ? "open" : "closed" );
+  strcat( s, digitalRead( DOOR_PIN ) ? "closed" : "open" );
   strcat( s, "\"" );
    
   strcat( s, "}" );
@@ -234,23 +237,22 @@ int thermoLight( ) {
 /**
  * Is the door open or what?
  * Door has one of these on it http://www.toolstation.com/shop/Magnetic+Contact/p33648
- * doorOpen is a global
+ * Door circuit is from here http://www.gammon.com.au/forum/?id=11955
+ * doorStatus is a global
  * TIME_BETWEEN_NAGS is a number of seconds
  * TOO_LONG is a number of seconds
  */
 int door( int pin ) {
-  unsigned int v = digitalRead( pin );
-  if ( v != doorOpen ) {
-    Serial.print( v );
-    Serial.print( " != " );
-    Serial.println( doorOpen );
-    doorOpen = v;
-    Serial.print( "now doorOpen = " );
-    Serial.println( doorOpen );
-    delay( 1000 );
-    // alert( doorOpen );
+  int v = digitalRead( pin );
+  if ( v != doorStatus ) {
+    if ( doorStatus != -1 ) {
+      Serial.print( "door " );
+      Serial.print( doorStatus );      
+      alert( v );
+    }
+    doorStatus = v;
   }
-  if ( doorOpen ) {
+  if ( ! doorStatus ) {
     openFor = ( millis( ) - time ) / 1000;
     if ( openFor > TOO_LONG ) {
       if (( millis( ) - lastAlerted ) / 1000 > TIME_BETWEEN_NAGS ) {
@@ -271,16 +273,21 @@ int door( int pin ) {
  * Incomplete!
  */
 int alert( int status ) {
-  if ( client.connect( "www.txtlocal.com", 80 )) {
-    Serial.println( "connected to server ok" );
-    client.print( "GET /getcredits.php?uname=" );
-    client.print( textLocalUser );
-    client.print( "&pword=" );
-    client.print( textLocalPassword );
-    client.println( " HTTP/1.1" );
-    client.print( "Host: www.txtlocal.com" );
-    client.println( );
-    client.println( "User-Agent: Arduino/1.0" );
-    client.println( "Connection: close" );
-  }
+  client.connect( textLocalHost, 80 );
+  delay( 100 );
+  client.flush( );
+  client.print( "GET /getcredits.php?uname=" );
+  client.print( textLocalUser );
+  client.print( "&pword=" );
+  client.print( textLocalPassword );
+  client.print( "&_=" );
+  client.print( millis( ));
+  client.println( " HTTP/1.1" );
+  client.print( "Host: " );
+  client.println( textLocalHost );
+  client.println( "User-Agent: Arduino/1.0" );
+  client.println( "Content-length: 0" );
+  client.println( "Connection: close" );
+  client.println( );
+  client.stop( );
 }
