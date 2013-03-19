@@ -51,9 +51,11 @@ unsigned long openFor;
 unsigned long lastAlerted;
 
 #ifndef TEXTLOCAL_H
-char textLocalUser[5] = "user";
+char textLocalUser[14] = "foo%40foo.com"; // remember to encode everything
 char textLocalPassword[5] = "pass";
 char textLocalHost[17] = "www.txtlocal.com";
+char textLocalRecipient[7] = "441234";
+char textLocalSender[8] = "arduino";
 #endif
 
 void setup( ) {
@@ -247,7 +249,7 @@ int door( int pin ) {
   if ( v != doorStatus ) {
     if ( doorStatus != -1 ) {
       Serial.print( "door " );
-      Serial.print( doorStatus );      
+      Serial.println( doorStatus );      
       alert( v );
     }
     doorStatus = v;
@@ -268,26 +270,43 @@ int door( int pin ) {
   }
   return v;
 }
+
 /**
- * To send a text or a tweet or something.
- * Incomplete!
+ * To send sms via textlocal post
  */
 int alert( int status ) {
   client.connect( textLocalHost, 80 );
   delay( 100 );
   client.flush( );
-  client.print( "GET /getcredits.php?uname=" );
-  client.print( textLocalUser );
-  client.print( "&pword=" );
-  client.print( textLocalPassword );
-  client.print( "&_=" );
+  client.print( "POST /sendsmspost.php?_=" );
   client.print( millis( ));
+  
+  char data[99] = "";
+  data[0] = 0; // null string
+  strcat( data, "uname=" );
+  strcat( data, textLocalUser );
+  strcat( data, "&pword=" );
+  strcat( data, textLocalPassword );
+  strcat( data, "&from=" );
+  strcat( data, textLocalSender );
+  strcat( data, "&message=door+is+" );
+  strcat( data, status ? "shut" : "open" );
+  strcat( data, "%2C+temperature+is+" );
+  char vs[4] = "";
+  itoa( vtoc( analogRead( THERMOMETER_PIN )), vs, 10 );
+  strcat( data, vs );
+  strcat( data, "&selectednums=" );
+  strcat( data, textLocalRecipient );
+  Serial.println( data );
   client.println( " HTTP/1.1" );
   client.print( "Host: " );
   client.println( textLocalHost );
   client.println( "User-Agent: Arduino/1.0" );
-  client.println( "Content-length: 0" );
+  client.println( "Content-Type: application/x-www-form-urlencoded" );
+  client.print( "Content-length: " );
+  client.println( strlen( data ));
   client.println( "Connection: close" );
   client.println( );
+  client.println( data );
   client.stop( );
 }
